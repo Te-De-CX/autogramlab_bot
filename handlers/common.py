@@ -23,6 +23,9 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "👑 Admin Panel":
         await admin_panel(update, context)
         return True
+    elif text == "🔙 Back to Main Menu":
+        await back_to_main(update, context)
+        return True
     return None
 
 async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):

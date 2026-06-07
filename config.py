@@ -7,6 +7,7 @@ load_dotenv()
 # Bot Configuration - REPLACE WITH YOUR ACTUAL TOKEN
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8652210142:AAHo-ITqN6Q8OEIqHwDMOXz4UPrNStMNGGg')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', '1850435445')
+ADMIN_CONTACT = "@aglab_support"
 
 ADMIN_IDS = [int(ADMIN_CHAT_ID)]  # list of admin user IDs
 BOT_USERNAME = "@AutogramLab_bot"

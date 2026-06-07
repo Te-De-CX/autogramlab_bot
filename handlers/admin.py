@@ -53,16 +53,17 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
         return ADMIN_MENU
     elif text == "👥 View Users":
+        # Start with page 1
+        page = 1
         users = get_all_users()
         total = len(users)
-        msg = f"*Total Users:* {total}\n\n"
-        for u in users[:20]:
-            username = f"@{u['username']}" if u['username'] else "No username"
-            msg += f"• {u['first_name']} {u['last_name'] or ''} ({username})\n  ID: `{u['user_id']}`\n  Joined: {u['joined_date'][:10]}\n\n"
-        if total > 20:
-            msg += f"... and {total-20} more."
-        await update.message.reply_text(msg, parse_mode='Markdown')
-        await update.message.reply_text("Admin Menu:", reply_markup=get_admin_keyboard())
+        if total == 0:
+            await update.message.reply_text("No users found.")
+            await update.message.reply_text("Admin Menu:", reply_markup=get_admin_keyboard())
+            return ADMIN_MENU
+        context.user_data['users_page'] = page
+        context.user_data['users_total'] = total
+        await send_users_page(update.message, page, total, users)
         return ADMIN_MENU
     elif text == "📢 Send Announcement":
         keyboard = [
@@ -74,6 +75,58 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await update.message.reply_text("Unknown option.", reply_markup=get_admin_keyboard())
         return ADMIN_MENU
+
+# Helper function to send a specific page of users
+async def send_users_page(message, page, total, users):
+    per_page = 10
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_users = users[start:end]
+    total_pages = (total + per_page - 1) // per_page
+
+    msg = f"*Total Users:* {total}\n\n*Page {page}/{total_pages}*\n\n"
+    for u in page_users:
+        username = f"@{u['username']}" if u['username'] else "No username"
+        msg += f"• {u['first_name']} {u['last_name'] or ''} ({username})\n  ID: {u['user_id']}\n  Joined: {u['joined_date'][:10]}\n\n"
+    keyboard = []
+    if page > 1:
+        keyboard.append(InlineKeyboardButton("⬅️ Previous", callback_data="users_page_prev"))
+    if page < total_pages:
+        keyboard.append(InlineKeyboardButton("➡️ Next", callback_data="users_page_next"))
+    if keyboard:
+        keyboard = [keyboard]
+    else:
+        keyboard = []
+    await message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None)
+
+# ----------------------------------------------------------------------
+# Pagination callback handler
+# ----------------------------------------------------------------------
+async def users_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await query.edit_message_text("⛔ Unauthorized.")
+        return
+
+    action = query.data
+    page = context.user_data.get('users_page', 1)
+    total = context.user_data.get('users_total', 0)
+    if total == 0:
+        await query.edit_message_text("No users found.")
+        return
+
+    if action == "users_page_prev" and page > 1:
+        page -= 1
+    elif action == "users_page_next" and page < ((total + 9) // 10):
+        page += 1
+    else:
+        return
+
+    context.user_data['users_page'] = page
+    users = get_all_users()
+    await send_users_page(query.message, page, total, users)
 
 # ----------------------------------------------------------------------
 # Announcement conversation (inline buttons, photo, buttons)
@@ -134,7 +187,6 @@ async def collect_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['announcement_buttons'] = []
             return await preview_announcement(update, context)
         return CONFIRM_ANNOUNCEMENT
-    # User sent text button line
     text = update.message.text
     lines = text.split('\n')
     for line in lines:
@@ -314,7 +366,9 @@ async def admin_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.reply_text("Choose an option:", reply_markup=get_admin_keyboard())
     return ADMIN_MENU
 
+# ----------------------------------------------------------------------
 # Conversation handler
+# ----------------------------------------------------------------------
 admin_conv = ConversationHandler(
     entry_points=[CommandHandler('admin', admin_panel), MessageHandler(filters.Regex('^👑 Admin Panel$'), admin_panel)],
     states={
@@ -323,7 +377,8 @@ admin_conv = ConversationHandler(
             CallbackQueryHandler(add_project_start, pattern='^admin_add_project$'),
             CallbackQueryHandler(edit_project_select, pattern='^admin_edit_project$'),
             CallbackQueryHandler(delete_project_select, pattern='^admin_delete_project$'),
-            CallbackQueryHandler(admin_back_callback, pattern='^admin_back$')
+            CallbackQueryHandler(admin_back_callback, pattern='^admin_back$'),
+            CallbackQueryHandler(users_page_callback, pattern='^users_page_')
         ],
         ADD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_project_name)],
         ADD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_project_description)],

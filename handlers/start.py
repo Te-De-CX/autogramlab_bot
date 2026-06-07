@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 from keyboards.reply_keyboards import get_main_menu_keyboard
 from database import register_user, get_portfolio_projects
 import config
+import urllib.parse
 
 async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -25,8 +26,8 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for project in projects:
         text = f"*{project['name']}*\n\n{project['description']}"
         keyboard = [
-            [InlineKeyboardButton("🔍 View Bot", url=project['link'])],
-            [InlineKeyboardButton("💰 Purchase this Bot", callback_data=f"purchase_{project['name'].replace(' ', '_')}")]
+            [InlineKeyboardButton("🔍 View Project", url=project['link'])],
+            [InlineKeyboardButton("💰 Purchase", callback_data=f"purchase_{project['name'].replace(' ', '_')}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
@@ -42,22 +43,62 @@ async def purchase_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     project_name = query.data.replace("purchase_", "").replace("_", " ")
     user = update.effective_user
     user_info = f"@{user.username} (ID: {user.id}) – {user.full_name}"
-    await query.edit_message_text(
-        f"✅ Thank you for your interest in *{project_name}*!\n\n"
-        "Our team has been notified. We will contact you shortly to discuss your requirements and provide a quote.\n\n"
-        "You can also start a new order using the /order command.",
-        parse_mode='Markdown'
-    )
+    
+    # 1. Auto notify admin (keep existing behavior)
     admin_ids = config.ADMIN_IDS if hasattr(config, 'ADMIN_IDS') else [config.ADMIN_CHAT_ID]
     for admin_id in admin_ids:
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
-                text=f"💰 *Purchase Inquiry*\n\nUser: {user_info}\nProject: {project_name}\nAction: Requested to purchase this bot.\nPlease contact the user to proceed.",
+                text=f"💰 *Purchase Inquiry*\n\nUser: {user_info}\nProject: {project_name}\nAction: Requested to purchase this bot.\nPlease contact the user.",
                 parse_mode='Markdown'
             )
         except Exception as e:
             print(f"Failed to notify admin {admin_id}: {e}")
+    
+    # 2. Provide deep link to admin chat with pre-filled message
+    quote_text = f"Purchase inquiry from @{user.username if user.username else 'User'} (ID: {user.id})\n\nProject: {project_name}"
+    encoded_text = urllib.parse.quote(quote_text)
+    admin_username = config.ADMIN_CONTACT.lstrip('@')
+    deep_link = f"https://t.me/{admin_username}?text={encoded_text}"
+    
+    keyboard = [[InlineKeyboardButton("📩 Send Quote to Admin (opens chat)", url=deep_link)]]
+    await query.edit_message_text(
+        f"✅ Thank you for your interest in *{project_name}*!\n\n"
+        "Click the button below to open a chat with us and send the quote (the message is pre‑filled – just press Send).",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def handle_purchase_deeplink(update: Update, context: ContextTypes.DEFAULT_TYPE, project_name: str):
+    user = update.effective_user
+    user_info = f"@{user.username} (ID: {user.id}) – {user.full_name}"
+    
+    # Auto notify admin
+    admin_ids = config.ADMIN_IDS if hasattr(config, 'ADMIN_IDS') else [config.ADMIN_CHAT_ID]
+    for admin_id in admin_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"💰 *Purchase Inquiry*\n\nUser: {user_info}\nProject: {project_name}\nAction: Requested to purchase this bot via deep link.\nPlease contact the user.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"Failed to notify admin {admin_id}: {e}")
+    
+    # Deep link to admin chat
+    quote_text = f"Purchase inquiry from @{user.username if user.username else 'User'} (ID: {user.id})\n\nProject: {project_name}"
+    encoded_text = urllib.parse.quote(quote_text)
+    admin_username = config.ADMIN_CONTACT.lstrip('@')
+    deep_link = f"https://t.me/{admin_username}?text={encoded_text}"
+    
+    keyboard = [[InlineKeyboardButton("📩 Send Quote to Admin (opens chat)", url=deep_link)]]
+    await update.message.reply_text(
+        f"✅ Thank you for your interest in *{project_name}*!\n\n"
+        "Click the button below to open a chat with us and send the quote.",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -80,6 +121,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif deep_link == "order":
             from handlers.order import order_start
             return await order_start(update, context)
+        elif deep_link.startswith("purchase_"):
+            project_name = deep_link.replace("purchase_", "").replace("_", " ")
+            await handle_purchase_deeplink(update, context, project_name)
+            return ConversationHandler.END
+
     welcome_message = (
         "Welcome to AutoGram Lab ⚙️\n\n"
         "We build powerful Telegram bots and automation systems.\nAnnouncement Channel: @autogramlab\n\n"
@@ -91,7 +137,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# Other commands (pricing, contact, support, help)
+# Other commands unchanged
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📚 Help & Support\n\n"
@@ -109,10 +155,10 @@ async def pricing_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pricing_text = (
         "💰 Pricing\n\n"
         "Our pricing varies based on complexity:\n\n"
-        "Telegram Bots: $50–$500+\n"
-        "Mini Apps: $150–$1000+\n"
+        "Telegram Bots: $200–$1000+\n"
+        "Mini Apps: $250–$1000+\n"
         "Websites: $200–$2000+\n"
-        "Automation Tools: $100–$800+\n\n"
+        "Automation Tools: $200–$3000+\n\n"
         "Click '🚀 Start a project' for a detailed quote!"
     )
     await update.message.reply_text(pricing_text)

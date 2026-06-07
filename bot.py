@@ -21,7 +21,7 @@ from handlers.order import (
     handle_bot_description, handle_budget, handle_deadline,
     cancel_order
 )
-from handlers.common import handle_menu_selection
+from handlers.common import handle_menu_selection, back_to_main
 from handlers.admin import admin_conv
 
 logging.basicConfig(
@@ -90,13 +90,13 @@ def main():
     # Order conversation
     application.add_handler(order_conv_handler)
     
-    # Menu button handlers (text messages)
+    # Menu button handlers – includes the back button now
     application.add_handler(MessageHandler(
-        filters.Regex('^(📂 Our Portfolio|💰 Pricing|📩 Contact Team|❓ Support|👑 Admin Panel)$'),
+        filters.Regex('^(📂 Our Portfolio|💰 Pricing|📩 Contact Team|❓ Support|👑 Admin Panel|🔙 Back to Main Menu)$'),
         handle_menu_selection
     ))
 
-    # Purchase callback
+    # Purchase callback (original inline button)
     application.add_handler(CallbackQueryHandler(purchase_callback, pattern='^purchase_'))
 
     # Unknown commands

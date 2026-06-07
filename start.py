@@ -52,7 +52,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"*{project['name']}*\n\n{project['description']}"
         keyboard = [
             [
-                InlineKeyboardButton("🔍 View Bot", url=project['link']),]
+                InlineKeyboardButton("🔍 View Project", url=project['link']),]
             [    InlineKeyboardButton("💰 ", callback_data=f"purchase_{project['name'].replace(' ', '_')}")
             ]
         ]
